@@ -55,3 +55,39 @@ bool L2gradient = false) ;
  }
  ```
 
+## Qt 程序
+
+### 文件交互窗口
+
+```c++
+#include <QFileDialog>
+QString fileName = QFileDialog::getOpenFileName(this,QStringLiteral("文件对话框！"),"D:",QStringLiteral("(*png *jpg);"));
+```
+
+
+
+### 文本框赋值与取值
+
+```c++
+ui->lineEdit->setText(fileName); // 给lineEdit赋值
+string imgPath = ui->lineEdit->text().toStdString(); //从lineEdit中获取字符串
+```
+
+`QString`与`string`之间的转换：
+
+```c++
+QString A;
+string B;
+B = A.toStdString();  //QString to string
+A = QString::fromStdString(B)  //string to QString
+```
+
+
+
+### 弹出警告窗口
+
+```c++
+#include <QMessageBox>
+QMessageBox::critical(this, "Warning!" , "选张图片呀! 傻牛 QAQ");
+```
+
