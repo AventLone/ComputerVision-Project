@@ -12,26 +12,30 @@
 
 
 using namespace std;
-using namespace cv;
+//using namespace cv;
 
 class FocusStack
 {
 public:
-    vector<Mat> inputImgs;
+    vector<cv::Mat> inputImgs;
 
-    explicit FocusStack(const vector<Mat> &imgList) :
+    explicit FocusStack(const vector<cv::Mat> &imgList) :
             inputImgs(imgList), len_imgStack(imgList.size())
     {}
 
     void alignImgs();  //图像对齐
 
-    static Mat doLap(const Mat &img);
+    static cv::Mat doLap(const cv::Mat &img);
 
-    Mat focusStack();
+    cv::Mat focusStack();
 
 private:
-    vector<Mat> alignedImgs;
+    vector<cv::Mat> alignedImgs;
     uint32_t len_imgStack;
+
+    /** 初始化SIFT特征检测器 **/
+    cv::Ptr<cv::SIFT> detector = cv::SIFT::create();
+    cv::Ptr<cv::DescriptorMatcher> matcher = cv::BFMatcher::create();
 };
 
 void FocusStack::alignImgs()
@@ -40,23 +44,16 @@ void FocusStack::alignImgs()
 
     int w = inputImgs[0].cols, h = inputImgs[0].rows;
 
-    Mat refeGray;
-    cvtColor(inputImgs[0], refeGray, COLOR_BGR2GRAY);
+    cv::Mat refeGray;
+    cvtColor(inputImgs[0], refeGray, cv::COLOR_BGR2GRAY);
 
     /** 初始化参照图像的关键点和描述子 **/
-    vector<KeyPoint> keypoints_refe;
-    Mat descriptors_refe;
+    vector<cv::KeyPoint> keypoints_refe;
+    cv::Mat descriptors_refe;
 
-    /** 初始化SIFT特征检测器 **/
-    Ptr<FeatureDetector> detector = SIFT::create();
-    Ptr<DescriptorExtractor> descriptor = SIFT::create();
-    Ptr<DescriptorMatcher> matcher = BFMatcher::create();
+    /** 检测关键点位置并计算描述子**/
+    detector->detectAndCompute(refeGray, cv::Mat(), keypoints_refe, descriptors_refe);
 
-    /** 检测关键点位置 **/
-    detector->detect(refeGray, keypoints_refe);
-
-    /** 根据关键点计算描述子 **/
-    descriptor->compute(refeGray, keypoints_refe, descriptors_refe);
 
     for (int i = 1; i < len_imgStack; ++i)
     {
@@ -67,20 +64,16 @@ void FocusStack::alignImgs()
             return;
         }
 
-        Mat imgGray;
-        cvtColor(inputImgs[i], imgGray, COLOR_BGR2BGRA);
+        cv::Mat imgGray;
+        cvtColor(inputImgs[i], imgGray, cv::COLOR_BGR2BGRA);
 
-        vector<KeyPoint> keypoints;
-        Mat descriptors;
+        vector<cv::KeyPoint> keypoints;
+        cv::Mat descriptors;
+        detector->detectAndCompute(imgGray, cv::Mat(), keypoints, descriptors);
 
-        /** 检测关键点位置 **/
-        detector->detect(imgGray, keypoints);
-        /** 根据关键点计算描述子 **/
-        descriptor->compute(imgGray, keypoints, descriptors);
-
-        vector<vector<DMatch>> rawMatches;
+        vector<vector<cv::DMatch>> rawMatches;
         matcher->knnMatch(descriptors_refe, descriptors, rawMatches, 2);
-        vector<DMatch> goodMatches;
+        vector<cv::DMatch> goodMatches;
         for (auto &rawMatche: rawMatches)
         {
             if (rawMatche[0].distance < 0.69 * rawMatche[1].distance)
@@ -91,48 +84,48 @@ void FocusStack::alignImgs()
 
         /** 根据distance对goodMatches进行排序 **/
         sort(goodMatches.begin(), goodMatches.end(),
-             [](DMatch &a, DMatch &b)
+             [](cv::DMatch &a, cv::DMatch &b)
              { return a.distance < b.distance; });
 
         /** 取goodMatches的一部分 **/
-        vector<DMatch> matches(goodMatches.begin(), goodMatches.begin() +
-                                                    uint16_t(goodMatches.size() * 2 / 3));
-        
-        vector<Point2f> pointsRefe;
-        vector<Point2f> points;
+        vector<cv::DMatch> matches(goodMatches.begin(), goodMatches.begin() +
+                                                        uint16_t(goodMatches.size() * 2 / 3));
+
+        vector<cv::Point2f> pointsRefe;
+        vector<cv::Point2f> points;
         for (const auto &match: matches)
         {
             points.push_back(keypoints[match.trainIdx].pt);
             pointsRefe.push_back(keypoints_refe[match.queryIdx].pt);
         }
 
-        Mat Homo = findHomography(points, pointsRefe, RANSAC, 2.0);
-        Mat outcome;
-        warpPerspective(inputImgs[i], outcome, Homo, inputImgs[i].size(), INTER_LINEAR);
+        cv::Mat Homo = findHomography(points, pointsRefe, cv::RANSAC, 2.0);
+        cv::Mat outcome;
+        warpPerspective(inputImgs[i], outcome, Homo, inputImgs[i].size(), cv::INTER_LINEAR);
         alignedImgs.push_back(outcome);
     }
 }
 
-Mat FocusStack::doLap(const Mat &img)
+cv::Mat FocusStack::doLap(const cv::Mat &img)
 {
     int kernel_size = 3, blur_size = 3;
-    Mat imgBlur;
-    GaussianBlur(img, imgBlur, Size(blur_size, blur_size), 0, 0);
-    Mat outcome;
+    cv::Mat imgBlur;
+    GaussianBlur(img, imgBlur, cv::Size(blur_size, blur_size), 0, 0);
+    cv::Mat outcome;
     Laplacian(imgBlur, outcome, CV_32F, kernel_size);
     return outcome;
 }
 
-Mat FocusStack::focusStack()
+cv::Mat FocusStack::focusStack()
 {
     alignImgs();
 
     int w = alignedImgs[0].cols, h = alignedImgs[0].rows;
-    vector<Mat> laps;
-    Mat imgGray;
+    vector<cv::Mat> laps;
+    cv::Mat imgGray;
     for (const auto &img: alignedImgs)
     {
-        cvtColor(img, imgGray, COLOR_BGR2GRAY);
+        cvtColor(img, imgGray, cv::COLOR_BGR2GRAY);
         laps.push_back(doLap(imgGray));
     }
 
@@ -150,7 +143,7 @@ Mat FocusStack::focusStack()
         }
     }
 
-    Mat maxim = Mat::zeros(Size(laps[0].cols, laps[0].rows), laps[0].type());  //创建一个空白图像
+    cv::Mat maxim = cv::Mat::zeros(cv::Size(laps[0].cols, laps[0].rows), laps[0].type());  //创建一个空白图像
     for (int i = 0; i < laps[0].rows; ++i)
     {
         for (int j = 0; j < laps[0].cols; ++j)
@@ -168,10 +161,10 @@ Mat FocusStack::focusStack()
     }
 
     /** 根据maxim制作掩膜 **/
-    vector<Mat> maskList;
+    vector<cv::Mat> maskList;
     for (auto &lap: laps)
     {
-        Mat mask = Mat::zeros(Size(w, h), CV_8UC1);
+        cv::Mat mask = cv::Mat::zeros(cv::Size(w, h), CV_8UC1);
         for (int i = 0; i < h; ++i)
         {
             const auto pixl_lap = lap.ptr<float>(i);
@@ -194,7 +187,7 @@ Mat FocusStack::focusStack()
     }
 
     /** 输出图片 **/
-    Mat output;
+    cv::Mat output;
     for (int i = 0; i < len_imgStack; ++i)
     {
         bitwise_not(alignedImgs[i], output, maskList[i]);
