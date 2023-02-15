@@ -16,8 +16,6 @@ public:
 
     ~Tasks();
 
-    void taskInit();
-
     void startTasks();
 
 private:
@@ -40,17 +38,6 @@ Tasks::Tasks() : isOpen(true)
     std::string weights = "../model/yolov7.weights";
     std::string labels = "../model/coco.names";
     detector = new YoloDetector(labels, config, weights);
-}
-
-Tasks::~Tasks()
-{
-    thread_tasks[0].join();
-    thread_tasks[1].join();
-    delete detector;
-}
-
-void Tasks::taskInit()
-{
     /** 设置相机捕获画面尺寸大小 **/
     cap.set(cv::CAP_PROP_FRAME_WIDTH, 800);
     cap.set(cv::CAP_PROP_FRAME_HEIGHT, 600);
@@ -60,17 +47,23 @@ void Tasks::taskInit()
 
     /** 帧数   30 60 **/
     cap.set(cv::CAP_PROP_FPS, 30);
+}
 
+Tasks::~Tasks()
+{
+    thread_tasks[0].join();
+    thread_tasks[1].join();
+    delete detector;
+}
+
+void Tasks::task1_getImgsFromCamera()
+{
     cap.open(0);
     if (!cap.isOpened())
     {
         std::cerr << "摄像头打开失败！" << std::endl;
         abort();
     }
-}
-
-void Tasks::task1_getImgsFromCamera()
-{
     while (isOpen)
     {
         cap >> frame;
